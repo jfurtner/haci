@@ -23,9 +23,22 @@ CONFIG="haci.conf"
 ###
 
 # comm functions
-function _SAY { [ -z $debug ] || echo -ne "  $1\n"; return 0; }
-function _ERR { echo "!!! Error: $1"; exit 1; }
-function _WRN { echo "??? $1"; return 0; }
+function _SAY { [ -z $debug ] || {
+    echo -ne "  `date`:$1\n" >> "$LOG_OUT_FILE"
+    #echo -ne "$1\n" 
+  }
+  return 0; 
+}
+function _ERR { 
+  [ -z $debug ] || echo -e "!!! Error: $1" >> "$LOG_OUT_FILE"
+  echo "!!! Error: $1"
+  exit 1; 
+}
+function _WRN {
+  [ -z $debug ] || echo -e "??? $1" >> "$LOG_OUT_FILE"
+  echo "??? $1"
+  return 0
+}
 
 # find functions
 function FIND_BIN {
@@ -42,9 +55,13 @@ function FIND_BIN {
 }
 
 # validate internal ssl test site
-function CHECK_SSL_INT { a=`$curl -m 2 -sIX GET "$test_site"` || return 1; }
-function CHECK_SSL_INT_INSECURE { a=`$curl -m 2 -sk "$test_site"` && return 0 || return 1; }
-function CHECK_SSL_INT_PY { a=`$python -c "exec('import requests\ntry:\n\tr=requests.get(\"$test_site\")\nexcept:\n\texit(1)')"` || return 1; }
+function CHECK_SSL_INT {
+  _SAY "Test $test_site (full SSL)"
+  $curl -m 2 -IX GET "$test_site" >> $LOG_OUT_FILE 2>&1 && return 0 || return 1; }
+function CHECK_SSL_INT_INSECURE { 
+  _SAY "Test $test_site (insecurely)"
+  $curl -m 2 -k "$test_site" >> $LOG_OUT_FILE 2>&1 && return 0 || return 1; }
+function CHECK_SSL_INT_PY { $python -c "exec('import requests\ntry:\n\tr=requests.get(\"$test_site\")\nexcept:\n\texit(1)')" 2>&1 >> $LOG_OUT_FILE || return 1; }
 
 # create backup of certificates file
 function CERT_BACKUP {
@@ -97,6 +114,7 @@ for bin in $BINS; do FIND_BIN "$bin" || _ERR "Cannot find $bin in PATH or at com
 
 # switch on debug if it's been defined.
 d=`echo "$1" |$grep -i -q "debug"` && debug="1"
+[ -z $debug ] && export LOG_OUT_FILE=/dev/null || export LOG_OUT_FILE=/share/haci.txt 
 _SAY "\b\bRunning with debug"
 
 # load config
@@ -131,6 +149,9 @@ certs=`$find "${0%/*}/certs"/ -type f \( -name "*.crt" -o -name "*.pem" -o -name
 [ -z "$certs" ] && _ERR "No certificates were found in ${0%/*}/certs, please place your Root CA and any intermediate CAs in that directory in PEM format."
 _SAY "Found certs: \n$certs" |$sed 's#^[\./]./\?#  - #'
 
+DATE=`date +%Y%m%d-%H%M%S`
+
+
 # add linux core certs if needed
 [ ! -z $int_ssl_status ] && {
   _SAY "Injecting Certs to Linux..."
@@ -142,8 +163,10 @@ _SAY "Found certs: \n$certs" |$sed 's#^[\./]./\?#  - #'
   CERT_BACKUP "$CAS"
   # load up certs
   CERT_LOADUP "$CAS"
+  
+  # this doesn't appear to work, just manually combine all certs into one big file
   # inject to CA file if need to
-  CERT_CA_INJECT "$CAS"
+  #CERT_CA_INJECT "$CAS"
 
   # copy cert files over to ca-dir
   for c in $certs; do
@@ -159,6 +182,14 @@ _SAY "Found certs: \n$certs" |$sed 's#^[\./]./\?#  - #'
     _SAY "- $CDS/${c##*/} is linked to $CDS/${pem_hash}.0."
   done
 
+  _SAY "Creating new ca-certificates.crt"
+  find "$CDS" -name '*.pem' -exec cat {} \; > "$CDS/ca-certificates.crt.new.$DATE"
+  _SAY "real backup of $CAS"
+  cp "$CAS" "$CAS.old.$DATE"
+  _SAY "now replace $CAS"
+  mv "$CAS.new.$DATE" "$CAS"
+
+  _SAY "Retest Linux SSL"
   # check SSL trust again, fingers crossed all worked fine.
   CHECK_SSL_INT && _SAY "Test site says Linux SSL handshake is passing now, success." || { 
     _ERR "Linux SSL Tests are still failing, this should not happen.\n   Please raise an issue on github.\n"
@@ -178,7 +209,14 @@ _SAY "Found certs: \n$certs" |$sed 's#^[\./]./\?#  - #'
   # load up certs
   CERT_LOADUP "$py_ca_loc"
   # inject to CA file if need to
-  CERT_CA_INJECT "$py_ca_loc"
+  #CERT_CA_INJECT "$py_ca_loc"
+
+
+  _SAY "Backup cacert.pem"
+  cp "$py_ca_loc" "$py_ca_loc.old.$DATE"
+  
+  _SAY "Copy ca-certificates to python cacert.pem"
+  cp "$CDS/ca-certificates.crt" "$py_ca_loc"
 
   CHECK_SSL_INT_PY && _SAY "Test site says Python Certifi SSL handshake is passing now, success." || { 
     _ERR "Python Certifi SSL Tests are still failing, this should not happen.\n   Please raise an issue on github.\n"
@@ -186,6 +224,6 @@ _SAY "Found certs: \n$certs" |$sed 's#^[\./]./\?#  - #'
   }
 }
 
-
+_SAY "Completed"
 exit 0
 # eof
