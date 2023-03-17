@@ -7,7 +7,7 @@
 ###
 
 # linux binary dependencies are listed here (except for echo - that is assumed)."
-BINS="grep sed curl openssl find cat awk cp ln pip python"
+BINS="grep sed curl openssl find cat awk cp ln pip python find mv"
 
 # certificates directory (can be /opt/etc/ssl/certs on *WRT)
 CDS="/etc/ssl/certs"

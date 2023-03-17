@@ -41,11 +41,12 @@ Example for configuration.yaml:
 ### Home Assistant Cert Injector
 sensor:
   - platform: command_line
-    name: "HACI"
-    command: "/share/haci/haci.sh && echo 1 || echo 0"
+    unique_id: home_assistant_certificate_injector
+    name: "Certificate Injector"
+    command: "chmod 0755 /share/haci/haci.sh ; /share/haci/haci.sh && echo 'on' || echo 'off'"
     device_class: safety
-    payload_on: 0
-    payload_off: 1
+    command_timeout: 120
+    scan_interval: 300
 ```
 
 ## FAQ
@@ -65,7 +66,8 @@ Yes, as if you set this script as a sensor, the changes are made the first time 
 Also, all you need to do is re-run the script should trust be lost, and it's highly likely that it fixes the issue(s).
 
 ```Is there a backup created?```  
-Yes, for both the /etc/ssl/certs/ca-certificates.crt and /usr/local/lib/python\<runtime_version\>/site-packages/certifi/cacert.pem files are backed up (with a .backup suffix) to HACI's runtime directory. Worst case scenario is that you have to SSH back in and overwrite the original files with the backups.
+---Yes, for both the /etc/ssl/certs/ca-certificates.crt and /usr/local/lib/python\<runtime_version\>/site-packages/certifi/cacert.pem files are backed up (with a .backup suffix) to HACI's runtime directory. Worst case scenario is that you have to SSH back in and overwrite the original files with the backups.---
+Yes, for both ca-certificates.crt, backed up to ca-certificates.crt.old.DATE-TIME, cacert.pem also to ca-certificates.crt.old.DATE-TIME. Only done if backup required.
 
 ```Any binary dependencies to worry about?```  
 No. There is reliance on basic linux tools and openssl - all binary dependencies are validated on script start, so you don't end up with a half-baked solution.
